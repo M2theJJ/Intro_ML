@@ -1,0 +1,44 @@
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn import linear_model
+from sklearn import metrics
+
+# importing the data from the csv file
+file = np.genfromtxt('train.csv', delimiter=',')
+
+# file[x:y, s:t] -> in rows x to y take elements s to t
+y = file[1:, 1]   # Ignoring the header line, the first column is the y array
+X = file[1:, 2:]  # Ignoring the header line, the rest is the X array
+
+# Create a matrix that holds all transformed columns (takes care of the constant transformation)
+X_transformed = np.ones((700, 21))
+
+# Linear transformation
+X_transformed[:, 0:5] = X
+
+# Quadratic transformation
+X_transformed[:, 5:10] = X ** 2
+
+# Exponential transformation
+X_transformed[:, 10:15] = np.e ** X
+
+# Cosine transformation
+X_transformed[:, 15:20] = np.cos(X)
+
+# print(y.shape)
+# print(X_transformed.shape)
+bestmodel = None
+best_expl = 0
+#lmb = np.array([0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009, 0.001, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.01])
+
+#model = linear_model.Lasso(alpha=0.00000001, random_state = 1, selection = 'random', max_iter = 99999999)
+model = linear_model.Lasso(alpha=0.00001, random_state = 1, selection = 'random', max_iter = 5999999)
+regr = model.fit(X_transformed, y)
+predictions = model.predict(X_transformed)
+ 
+
+print(metrics.mean_squared_error(y, predictions, squared = False))
+print(regr.coef_)
+    
+# export the results in the csv file
+np.savetxt('res_1B.csv', regr.coef_, delimiter=',')
