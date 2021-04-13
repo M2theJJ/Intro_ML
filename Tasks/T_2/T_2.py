@@ -2,7 +2,35 @@
 # We got 18995 patients.
 # Each patient has 12 measurements, thus in total we got 227940 measurements (test_features.csv)
 
-# import pandas as pd
+
+# We could try to impute the missing data with the iterative imputer class from scikit-learn:
+# https://scikit-learn.org/stable/modules/generated/sklearn.impute.IterativeImputer.html
+# I got inspired by this website when it came to the imputation for our dataset
+# https://machinelearningmastery.com/iterative-imputation-for-missing-values-in-machine-learning/
+
+import numpy as np
+import pandas as pd
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
+
+# load dataset
+dataframe = pd.read_csv('train_features.csv', header=0)
+
+# split into input and output elements
+data = dataframe.values
+ix = [i for i in range(data.shape[1]) if i != data.shape[1]-1]
+X, y = data[:, ix], data[:, data.shape[1]-1]
+
+# define imputer and fit on dataset
+imputer = IterativeImputer(max_iter=1).fit(X)
+
+# the dataset Xtrans no more 'nan' values
+Xtrans = imputer.transform(X)
+
+# export the results in the csv file
+np.savetxt('train_features_transformed.csv', Xtrans, delimiter=',', fmt='%1.2f')
+
+
 
 # Sub-task 1: Ordering of medical test
 # Here we are interested in anticipating the future needs of the patient. You have to predict whether a certain medical
