@@ -8,27 +8,40 @@
 # I got inspired by this website when it came to the imputation for our dataset
 # https://machinelearningmastery.com/iterative-imputation-for-missing-values-in-machine-learning/
 
-import numpy as np
-import pandas as pd
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
+### This code gives a metric on how many data points are missing in each feature
+from pandas import read_csv
+dataframe = read_csv('train_features.csv', header=0)
 
-# load dataset
-dataframe = pd.read_csv('train_features.csv', header=0)
+for i in range(dataframe.shape[1]):
+	n_miss = dataframe.iloc[:, i].isnull().sum()
+	perc = n_miss / dataframe.shape[0] * 100
+	print('> %d, Missing: %d (%.1f%%)' % (i, n_miss, perc))
 
-# split into input and output elements
-data = dataframe.values
-ix = [i for i in range(data.shape[1]) if i != data.shape[1]-1]
-X, y = data[:, ix], data[:, data.shape[1]-1]
 
-# define imputer and fit on dataset
-imputer = IterativeImputer(max_iter=1).fit(X)
-
-# the dataset Xtrans no more 'nan' values
-Xtrans = imputer.transform(X)
-
-# export the results in the csv file
-np.savetxt('train_features_transformed.csv', Xtrans, delimiter=',', fmt='%1.2f')
+### This code automatically imputes all the data, but it does not give satisfying results
+### i.e. the only measured value for 'AST' is 20 and the eleven imputed data points arcan easily be a magnitude bigger.
+### For me, this does not make sense as I would expect the other values to be around that measured value, too.
+# import numpy as np
+# import pandas as pd
+# from sklearn.experimental import enable_iterative_imputer
+# from sklearn.impute import IterativeImputer
+#
+# # Load dataset
+# dataframe = pd.read_csv('train_features.csv', header=0)
+#
+# # Split into input and output elements
+# data = dataframe.values
+# ix = [i for i in range(data.shape[1])]
+# X, y = data[:, ix], data[:, data.shape[1]-1]
+#
+# # Define imputer and fit on dataset
+# imputer = IterativeImputer(max_iter=5).fit(X)
+#
+# # The dataset Xtrans contains no 'nan' values anymore
+# Xtrans = imputer.transform(X)
+#
+# # Export the results in the csv file
+# np.savetxt('train_features_transformed.csv', Xtrans, delimiter=',', fmt='%1.2f')
 
 
 
