@@ -1,156 +1,291 @@
-# Some general information:
-# We got 18995 patients.
-# Each patient has 12 measurements, thus in total we got 227940 measurements (test_features.csv)
-
-
-
-### This code gives a metric on how many data points are missing in each feature
-from pandas import read_csv
-dataframe = read_csv('train_features_naively_imputed.csv', header=0)
-
-for i in range(dataframe.shape[1]):
-	n_miss = dataframe.iloc[:, i].isnull().sum()
-	percent = n_miss / dataframe.shape[0] * 100
-	print('> %d, Missing: %d (%.1f%%)'%(i, n_miss, percent))
-
-
-
-### Idea: I make two assumptions. The first one is, that the patients are independent, thus the measurements of one
-### patient does not influence any other patient. The other is, if no measurements of a certain feature was done, it
-### is probably neglictable and thus can be estimated to be around the average.
-### Thus the code looks at the twelve measurements for any patient. If there is any data point for any of the features,
-### then the missing data points will be an average of the one that was measured. If all the points are missing, then
-### the measurements will be imputed by the healthy human average of that feature.
-
-### Result: The impute function is stupendeously slow and with that, it is not of any real use to us!
-### Nevertheless I have run it, and the results can still be used for the tasks at hand.
-
-
 import numpy as np
-import random as rnd
 from pandas import read_csv
+from sklearn.impute import SimpleImputer
+import torch
+import torch.nn as nn
+from sklearn.model_selection import train_test_split
 
-dataframe = read_csv('train_features.csv', header=0)
-
-# For every patient, go though the 12 rows of data and average the entries
-# 	If there is an average (i.e. at least one point was measured), then take that to fill in the nan's of that column
-#	If there is no average, then fill the column with values picked randomly from the corresponding 'average_values' array
-
-def impute(patient):
-	# pid,	Time,	Age,	EtCO2,	PTT,	BUN,	Lactate,	Temp,	Hgb,		HCO3,	BaseExcess,	RRate*,	Fibrinogen,	Phosphate,	WBC,	Creatinine,	PaCO2,	AST,	FiO2,	Platelets,	SaO2,	Glucose,	ABPm*,	Magnesium,	Potassium,	ABPd,	Calcium,	Alkalinephos,	SpO2,	Bilirubin_direct,	Chloride,	Hct,	Heartrate,	Bilirubin_total,	TroponinI,	ABPs,	pH
-	# -		-		-		35-45	25-35	7-20	0.8-1.5		36-38	12-17.5		22-28	(-2)-2		0?		150-400		2.5-4.5		4.5-11	0.5-1.2		38-42	5-40	0.21	150-450		97-100	72-140		??		1.8-2.2		3.6-5.2		??		8.6-10.3	20-140			95-100	0-0.3				96-106		36-50	60-100		0.1-1.2				0-0.4		??		7.35-7.45
-	# * For RRate, ABPm, ABPdm, and  ABPs I could not find good data, but it looks like those features are pretty good populated, anyway
-	# The data was found via quick Google search and might not be accurate.
-	average_values = [[35,45], [25,35], [7,20], [0.8,1.5], [36,38], [12,17.5], [22,28], [-2,2], [0,0], [150,400], [2.5,4.5], [4.5,11], [0.5,1.2], [38,42], [5,40], [0.21,0.21], [150,450], [97,100], [72,140], [0,0], [1.8,2.2], [3.6,5.2], [0,0], [8.6,10.3], [20,140], [95,100], [0,0.3], [96,106], [36,50],  [60,100], [0.1,1.2], [0,0.4], [0,0], [7.35,7.45]]
-
-	# Create a list of lists
-	average_patient_values = np.empty((len(average_values), 0)).tolist()
-	# Go though all the 12 data rows of a patient and save all the available information into the corresponding list (nan's are skipped)
-	for i in range(12):
-		for j in range(dataframe.shape[1]-3):
-			if np.isnan(dataframe.iloc[(i+patient), j+3]):
-				continue
-			else:
-				average_patient_values[j].append(dataframe.iloc[(i+patient), j+3])
-
-	# Calculate the average of the lists. Empty lists (i.e. originally only 'nan') are set to inf.
-	for i in range(len(average_patient_values)):
-		if not average_patient_values[i]:
-			average_patient_values[i] = np.inf
-		else:
-			average_patient_values[i] = np.mean(average_patient_values[i])
-
-	# Impute data: Again, go through all 12 data rows of a patient. If a 'nan' occurs, then see if there is an average available,
-	# If no average exists (i.e. all the values of this column are 'nan', then generate a random value from the average interval.
-	# Else, choose the average value that was computed before.
-	for i in range(12):
-		for j in range(dataframe.shape[1]-3):
-			if np.isnan(dataframe.iloc[(i+patient), j+3]) and average_patient_values[j] == np.inf:
-				dataframe.iloc[(i+patient), j+3] = rnd.uniform(average_values[0][0], average_values[0][1])
-			elif np.isnan(dataframe.iloc[(i+patient), j+3]):
-				dataframe.iloc[(i+patient), j+3] = average_patient_values[j]
+from sklearn.preprocessing import StandardScaler
 
 
-# Call the imputation function for each of the patients. The stride is 12, as each patient has 12 data rows.
-# for i in range(18995):
-# 	print('> Imputing data for patient %d (line %d to %d)'%(dataframe.iloc[i*12,0], i*12+1, i*12+12))
-# 	impute(i*12)
-#
-#
-# # This code writes a pandas dataframe directly into a zip file, supposed df is a pandas dataframe containing the result
-# dataframe.to_csv('train_features_naively_imputed.csv', float_format='%.3f', header=True, index=False)
+# For each patient, we get part of their current state for 12 consecutive hours
+test_features_frame = read_csv('test_features.csv', header=0)       # only for testing after training!
+train_features_frame = read_csv('train_features.csv', header=0)     # use for training the model
+ground_truth_frame = read_csv('train_labels.csv', header=0)
+
+test_features = test_features_frame.values
+train_features = train_features_frame.values
+ground_truth = ground_truth_frame.values
+res = np.zeros((round(len(test_features)/12),12))
+
+# Data Imputer on the training data
+imputer = SimpleImputer(strategy='mean')
+imputer.fit(train_features_frame)
+train_features = imputer.transform(train_features_frame)
+
+# print(SimpleImputer(strategy='mean').fit(train_features_frame).statistics_)
+# print(X[0])
 
 
-
-# We could try to impute the missing data with the iterative imputer class from scikit-learn:
-# https://scikit-learn.org/stable/modules/generated/sklearn.impute.IterativeImputer.html
-# I got inspired by this website when it came to the imputation for our dataset
-# https://machinelearningmastery.com/iterative-imputation-for-missing-values-in-machine-learning/
-
-### This code automatically imputes all the data, but it does not give satisfying results
-### i.e. the only measured value for 'AST' is 20 and the eleven imputed data points arcan easily be a magnitude bigger.
-### For me, this does not make sense as I would expect the other values to be around that measured value, too.
-# import numpy as np
-# import pandas as pd
-# from sklearn.experimental import enable_iterative_imputer
-# from sklearn.impute import IterativeImputer
-#
-# # Load dataset
-# dataframe = pd.read_csv('train_features.csv', header=0)
-#
-# # Split into input and output elements
-# data = dataframe.values
-# ix = [i for i in range(data.shape[1])]
-# X, y = data[:, ix], data[:, data.shape[1]-1]
-#
-# # Define imputer and fit on dataset
-# imputer = IterativeImputer(max_iter=5).fit(X)
-#
-# # The dataset Xtrans contains no 'nan' values anymore
-# Xtrans = imputer.transform(X)
-#
-# # Export the results in the csv file
-# np.savetxt('train_features_automatically_imputed.csv', Xtrans, delimiter=',', fmt='%1.2f')
+# How many entries are missing in the original dataframe?
+# for i in range(train_features.shape[1]):
+# 	n_miss = train_features_frame.iloc[:, i].isnull().sum()
+# 	percent = n_miss / train_features_frame.shape[0] * 100
+# 	print('> %d, Missing: %d (%.1f%%)'%(i, n_miss, percent))
 
 
-# Sub-task 1: Ordering of medical test
-# Here we are interested in anticipating the future needs of the patient. You have to predict whether a certain medical
-# test is ordered by a clinician in the remaining stay. This sub-task is a binary classification : 0 means that there
-# will be no further tests of this kind ordered whereas 1 means that at least one is ordered in the remaining stay.
-#
-# The corresponding columns containing the binary ground truth in train_labels.csv are: LABEL_BaseExcess,
-# LABEL_Fibrinogen, LABEL_AST, LABEL_Alkalinephos, LABEL_Bilirubin_total, LABEL_Lactate, LABEL_TroponinI, LABEL_SaO2,
-# LABEL_Bilirubin_direct, LABEL_EtCO2.
-#
-# Because there is an imbalance between labels in these sub-tasks we evaluate the performance of a model with the
-# Area Under the Receiver Operating Characteristic Curve (ROC Curve), which is a threshold-based metric. To achieve
-# good performance, it is important to produce (probabilistic) real-valued predictions in the interval [0, 1].
-# https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html#sklearn.metrics.roc_auc_score
+marker = np.array(12*[-99])
+
+def isFullNan(array):
+    for i in range(len(array)):
+        if np.isnan(array[i])==False:
+            return False
+    return True
+
+def colToMatrix(array, colId):
+    notnan = 0
+    table = []
+    temp = []
+    for i in range(round(len(array)/12)):
+        for j in range(12):
+            temp.append(array[i*12+j][colId])
+        if(isFullNan(temp)):
+            temp = marker
+        else:
+            meanTemp = 0
+            for j in range(12):
+                if np.isnan(temp[j]):
+                    continue
+                else:
+                    notnan = notnan+1
+                    meanTemp = meanTemp + temp[j]
+            if(notnan != 0):
+                meanTemp = meanTemp/notnan
+            for j in range(12):
+                if np.isnan(temp[j]):
+                    temp[j] = meanTemp
+        table.append(temp)
+        temp = []
+    return np.asarray(table)
+
+def colToMatrixNoSup(array, colId):
+    notnan = 0
+    table = []
+    temp = []
+    for i in range(round(len(array)/12)):
+        for j in range(12):
+            temp.append(array[i*12+j][colId])
+        meanTemp = 0
+        for j in range(12):
+            if np.isnan(temp[j]):
+                continue
+            else:
+                notnan = notnan+1
+                meanTemp = meanTemp + temp[j]
+        if(notnan != 0):
+            meanTemp = meanTemp/notnan
+        for j in range(12):
+            if np.isnan(temp[j]):
+                temp[j] = meanTemp
+        table.append(temp)
+        temp = []
+    return np.asarray(table)
+
+def clear(tab, ref, str):
+    for i in range(len(tab)):
+        if(np.all(tab[i] == marker)):
+            np.delete(tab, i)
+            np.delete(ref, i)
+            i = i-1
+            print('Cleared in '+str)
 
 
-# Sub-task 2: Sepsis prediction
-#
-# In this sub-task, we are interested in anticipating future life-threatening events. You have to predict whether a
-# patient is likely to have a sepsis event in the remaining stay. This task is also a binary classification : 0 means
-# that no sepsis will occur, 1 otherwise.
-#
-# The corresponding column containing the binary ground-truth in train_labels.csv is LABEL_Sepsis.
-#
-# This task is also imbalanced, thus we’ll also evaluate performance using Area Under the ROC Curve.
-# https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html#sklearn.metrics.roc_auc_score
+# Data: patient over time for each particle
+# For subtask 1
+baseExcessTab = colToMatrix(train_features, 10)
+refBaseExcess = ground_truth[ :,1]
+fibrinogeneTab = colToMatrix(train_features, 12)
+refFibri = ground_truth[ :,2]
+astTab = colToMatrix(train_features, 17)
+refAst = ground_truth[ :,3]
+alkTab = colToMatrix(train_features, 27)
+refAlk = ground_truth[ :,4]
+bilTotTab = colToMatrix(train_features, 33)
+refBilTot = ground_truth[ :,5]
+lactTab= colToMatrix(train_features, 6)
+refLact = ground_truth[ :,6]
+tropoTab = colToMatrix(train_features, 34)
+refTropo = ground_truth[ :,7]
+sao2Tab = colToMatrix(train_features, 20)
+refSao2 = ground_truth[ :,8]
+bilDirTab = colToMatrix(train_features, 29)
+refBilDir = ground_truth[ :,9]
+etco2Tab = colToMatrix(train_features, 3)
+refEtco2 = ground_truth[ :,10]
 
+# For subtask 2
+tempTab = colToMatrix(train_features, 7)
+heartTab = colToMatrix(train_features, 32)
+rrateTab = colToMatrix(train_features, 11)
+wbcTab = colToMatrix(train_features, 14)
 
-# Sub-task 3: Keys vitals signs prediction
-#
-# In this type of sub-task, we are interested in predicting a more general evolution of the patient state. To this
-# effect, here we aim at predicting the mean value of a vital sign in the remaining stay. This is a regression task.
-#
-# The corresponding columns containing the real-valued ground truth in train_labels.csv are: LABEL_RRate, LABEL_ABPm,
-# LABEL_SpO2, LABEL_Heartrate.
-#
-# To evaluate the performance of a given model on this sub-task we use R^2 Score.
-# https://scikit-learn.org/stable/modules/generated/sklearn.metrics.r2_score.html
+# Patient with only NaN shouldn't participate to the classifier
+clear(baseExcessTab, refBaseExcess, 'BE')
+clear(fibrinogeneTab, refFibri, 'fib')
+clear(astTab, refAst, 'ast')
+clear(alkTab, refAlk, 'alk')
+clear(bilTotTab, refBilTot, 'biltot')
+clear(lactTab, refLact, 'lact')
+clear(tropoTab, refTropo, 'tropo')
+clear(sao2Tab, refSao2, 'sao2')
+clear(bilDirTab, refBilDir, 'bidDir')
+clear(etco2Tab, refEtco2, 'etco2')
 
+# print('done cleaning')
 
-# This code writes a pandas dataframe directly into a zip file, supposed df is a pandas dataframe containing the result
-# df.to_csv('result.zip', float_format='%.3f', header=True, index=False, compression='zip')
+# For the final output
+baseExcessTest = colToMatrixNoSup(test_features, 10)
+fibrinogeneTest = colToMatrixNoSup(test_features, 12)
+astTest = colToMatrixNoSup(test_features, 17)
+alkTest = colToMatrixNoSup(test_features, 27)
+bilTotTest = colToMatrixNoSup(test_features, 33)
+lactTest= colToMatrixNoSup(test_features, 6)
+tropoTest = colToMatrixNoSup(test_features, 34)
+sao2Test = colToMatrixNoSup(test_features, 20)
+bilDirTest = colToMatrixNoSup(test_features, 29)
+etco2Test = colToMatrixNoSup(test_features, 3)
+
+act_col = 10
+cols = [10, 12, 17, 27, 33, 6, 34, 20, 29, 3]
+
+# Automatize a bit
+Xst = np.array([baseExcessTest, fibrinogeneTest, astTest, alkTest, bilTotTest, lactTest, tropoTest, sao2Test, bilDirTest, etco2Test])
+Xs = np.array([baseExcessTab, fibrinogeneTab, astTab, alkTab, bilTotTab, lactTab, tropoTab, sao2Tab, bilDirTab, etco2Tab])
+ys = np.array([refBaseExcess, refFibri, refAst, refAlk, refBilTot, refLact, refTropo, refSao2, refBilDir, refEtco2])
+Xs_train = 10*[[[]]]
+Xs_test = 10*[[]]
+ys_train = 10*[[]]
+ys_test = 10*[[]]
+
+# print(Xs.shape)     # Should be (10,18995,12) -> correct
+# print(Xst.shape)    # should be (10,12664,12) -> correct
+
+#Xst =np.array([baseExcessTest, fibrinogeneTest])
+#Xs = np.array([baseExcessTab, fibrinogeneTab])
+#ys = np.array([refBaseExcess, refFibri])
+#Xs_train = 2*[[[]]]
+#Xs_test = 2*[[]]
+#ys_train = 2*[[]]
+#ys_test = 2*[[]]
+
+# Takes one third of the input for validation
+for i in range(act_col):
+    Xs_train[i], Xs_test[i], ys_train[i], ys_test[i] = train_test_split(Xs[i], ys[i], test_size=0.33, random_state=69)
+
+# Standardize
+for i in range(act_col):
+    scaler = StandardScaler()
+    Xs_train[i] = scaler.fit_transform(Xs_train[i])
+    Xs_test[i] = scaler.transform(Xs_test[i])
+    Xst[i] = scaler.transform(Xst[i])
+
+# Conversion to Tensor
+Xs_train = torch.tensor(Xs_train, dtype=torch.float32)
+ys_train = torch.tensor(ys_train, dtype=torch.float32)
+Xs_test = torch.tensor(Xs_test, dtype=torch.float32)
+ys_test = torch.tensor(ys_test, dtype=torch.float32)
+Xst = torch.tensor(Xst, dtype=torch.float32)
+
+# Some sanity checks
+print(f'\n(Test Data) Xst.shape: {Xst.shape}')
+print(f'(Training Data) Xs_train.shape: {Xs_train.shape}')
+print(f'(Training Data) Xs_test.shape: {Xs_test.shape}')
+print(f'The dimensions of the training data add up: {Xs_train.shape[1] + Xs_test.shape[1] == train_features.shape[0]/12}\n')
+
+meanAcc = 0
+# tot_prob = 0
+
+# Array to store the results for subtask 1
+res_t1 = np.zeros(shape=(Xst.shape[1], Xst.shape[0]))
+print(res_t1.shape)
+
+for j in range(act_col):
+    # Get size
+    n_samples, n_features = Xs_train[j].shape
+
+    # Initialize weights
+    # w = torch.tensor(12*[0.0]  , dtype=torch.float32, requires_grad=True)
+
+    # Define Model
+    input_size = n_features
+    output_size = 1
+    class LogReg(nn.Module):
+        def __init__(self, n_input_features):
+            super(LogReg,self).__init__()
+            self.linear1 = nn.Linear(n_input_features, 100)
+            self.linear2 = nn.Linear(100, 1)
+
+        def forward(self, x):
+            y = torch.sigmoid(self.linear1(x))
+            y_predicted = torch.sigmoid(self.linear2(y))
+            return y_predicted
+    model = LogReg(input_size)
+
+    #Training
+    n_iters = 100
+    learning_rate = 0.01
+
+    # model prediction
+    # def forward(X):
+    #    return torch.matmul(X,w)
+
+    # loss = MSE
+    # def loss(y, y_predicted):
+    #    return torch.dot(y-y_predicted,y-y_predicted)
+    criterion = nn.BCELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    for epoch in range(n_iters):
+        # Predict
+        # y_pred = forward(Xs_train[0])
+        y_pred = model(Xs_train[j])
+
+        # Compute loss
+        loss = criterion(y_pred.squeeze(), ys_train[0])
+
+        # Compute gradients
+        loss.backward() #dloss/dx
+
+        # Update weight
+        # This makes sure gradient isnt part of the computational graph
+        #with torch.no_grad():
+        #    w -= learning_rate*w.grad
+        optimizer.step()
+
+        # We need to reinitialize weight not to accumulate
+        #w.grad.zero_()
+        optimizer.zero_grad()
+
+        #if epoch % 10 == 0:
+            #print("Epoch: ", epoch+1)
+            #print("Loss: ", loss)
+
+    with torch.no_grad():
+        y_predicted = model(Xs_test[j])
+        # print(y_predicted.shape)
+        # tot_prob += y_predicted[0].item()
+        y_predicted = y_predicted.squeeze()
+        y_predicted_cls = y_predicted.round()
+        acc = y_predicted_cls.eq(ys_test[j]).sum()/float(ys_test[j].shape[0])
+        # print(f'p={model(Xst[0])}, accuracy: {acc*100:.3f} %')
+        # print(acc)
+        meanAcc = meanAcc + acc
+
+        feat = model(Xst[j])
+        res_t1[j] = feat.cpu().detach().numpy()[0]
+        # print(numpy_array.shape)
+
+# print("Average: ", meanAcc/act_col)
+# print(f'p={model(Xst[0]).shape}, Average accuracy: {(meanAcc/act_col)*100:.3f} %')
+
+print(res_t1)
