@@ -13,15 +13,25 @@ test_features_frame = read_csv('test_features.csv', header=0)       # only for t
 train_features_frame = read_csv('train_features.csv', header=0)     # use for training the model
 ground_truth_frame = read_csv('train_labels.csv', header=0)
 
+
+# Set the time interval for every patient to 0 to 11
+train_features_frame['Time'] = train_features_frame.groupby('pid')['Time'].transform(lambda x: x - x.min())
+
+
 test_features = test_features_frame.values
 train_features = train_features_frame.values
 ground_truth = ground_truth_frame.values
 res = np.zeros((round(len(test_features)/12),12))
 
 # Data Imputer on the training data
-imputer = SimpleImputer(strategy='mean')
-imputer.fit(train_features_frame)
-train_features = imputer.transform(train_features_frame)
+# imputer = SimpleImputer(strategy='mean')
+# imputer = SimpleImputer(strategy='constant', fill_value=0)
+# imputer.fit(train_features_frame)
+# train_features = imputer.transform(train_features_frame)
+
+# # Data Imputer on the test data
+# imputer.fit(test_features_frame)
+# test_features = imputer.transform(test_features_frame)
 
 # print(SimpleImputer(strategy='mean').fit(train_features_frame).statistics_)
 # print(X[0])
@@ -33,42 +43,13 @@ train_features = imputer.transform(train_features_frame)
 #   percent = n_miss / train_features_frame.shape[0] * 100
 #   print('> %d, Missing: %d (%.1f%%)'%(i, n_miss, percent))
 
-
-marker = np.array(12*[-99])
-
-def isFullNan(array):
-    for i in range(len(array)):
-        if np.isnan(array[i])==False:
-            return False
-    return True
+# Transforming the array s.t. each patient only has one row (all features are concatenated)
+# print(train_features.shape)
+# train_features_transformed = train_features.reshape((18995, -1))
+# print(train_features.shape)
+# print(train_features[0])
 
 def colToMatrix(array, colId):
-    notnan = 0
-    table = []
-    temp = []
-    for i in range(round(len(array)/12)):
-        for j in range(12):
-            temp.append(array[i*12+j][colId])
-        if(isFullNan(temp)):
-            temp = marker
-        else:
-            meanTemp = 0
-            for j in range(12):
-                if np.isnan(temp[j]):
-                    continue
-                else:
-                    notnan = notnan+1
-                    meanTemp = meanTemp + temp[j]
-            if(notnan != 0):
-                meanTemp = meanTemp/notnan
-            for j in range(12):
-                if np.isnan(temp[j]):
-                    temp[j] = meanTemp
-        table.append(temp)
-        temp = []
-    return np.asarray(table)
-
-def colToMatrixNoSup(array, colId):
     notnan = 0
     table = []
     temp = []
@@ -91,13 +72,6 @@ def colToMatrixNoSup(array, colId):
         temp = []
     return np.asarray(table)
 
-def clear(tab, ref, str):
-    for i in range(len(tab)):
-        if(np.all(tab[i] == marker)):
-            np.delete(tab, i)
-            np.delete(ref, i)
-            i = i-1
-            print('Cleared in '+str)
 
 
 # Data: patient over time for each particle
@@ -123,37 +97,18 @@ refBilDir = ground_truth[ :,9]
 etco2Tab = colToMatrix(train_features, 3)
 refEtco2 = ground_truth[ :,10]
 
-# For subtask 2
-tempTab = colToMatrix(train_features, 7)
-heartTab = colToMatrix(train_features, 32)
-rrateTab = colToMatrix(train_features, 11)
-wbcTab = colToMatrix(train_features, 14)
-
-# Patient with only NaN shouldn't participate to the classifier
-clear(baseExcessTab, refBaseExcess, 'BE')
-clear(fibrinogeneTab, refFibri, 'fib')
-clear(astTab, refAst, 'ast')
-clear(alkTab, refAlk, 'alk')
-clear(bilTotTab, refBilTot, 'biltot')
-clear(lactTab, refLact, 'lact')
-clear(tropoTab, refTropo, 'tropo')
-clear(sao2Tab, refSao2, 'sao2')
-clear(bilDirTab, refBilDir, 'bidDir')
-clear(etco2Tab, refEtco2, 'etco2')
-
-# print('done cleaning')
 
 # For the final output
-baseExcessTest = colToMatrixNoSup(test_features, 10)
-fibrinogeneTest = colToMatrixNoSup(test_features, 12)
-astTest = colToMatrixNoSup(test_features, 17)
-alkTest = colToMatrixNoSup(test_features, 27)
-bilTotTest = colToMatrixNoSup(test_features, 33)
-lactTest= colToMatrixNoSup(test_features, 6)
-tropoTest = colToMatrixNoSup(test_features, 34)
-sao2Test = colToMatrixNoSup(test_features, 20)
-bilDirTest = colToMatrixNoSup(test_features, 29)
-etco2Test = colToMatrixNoSup(test_features, 3)
+baseExcessTest = colToMatrix(test_features, 10)
+fibrinogeneTest = colToMatrix(test_features, 12)
+astTest = colToMatrix(test_features, 17)
+alkTest = colToMatrix(test_features, 27)
+bilTotTest = colToMatrix(test_features, 33)
+lactTest= colToMatrix(test_features, 6)
+tropoTest = colToMatrix(test_features, 34)
+sao2Test = colToMatrix(test_features, 20)
+bilDirTest = colToMatrix(test_features, 29)
+etco2Test = colToMatrix(test_features, 3)
 
 act_col = 10
 cols = [10, 12, 17, 27, 33, 6, 34, 20, 29, 3]
@@ -162,6 +117,7 @@ cols = [10, 12, 17, 27, 33, 6, 34, 20, 29, 3]
 Xst = np.array([baseExcessTest, fibrinogeneTest, astTest, alkTest, bilTotTest, lactTest, tropoTest, sao2Test, bilDirTest, etco2Test])
 Xs = np.array([baseExcessTab, fibrinogeneTab, astTab, alkTab, bilTotTab, lactTab, tropoTab, sao2Tab, bilDirTab, etco2Tab])
 ys = np.array([refBaseExcess, refFibri, refAst, refAlk, refBilTot, refLact, refTropo, refSao2, refBilDir, refEtco2])
+
 Xs_train = 10*[[[]]]
 Xs_test = 10*[[]]
 ys_train = 10*[[]]
@@ -196,16 +152,42 @@ Xs_test = torch.tensor(Xs_test, dtype=torch.float32)
 ys_test = torch.tensor(ys_test, dtype=torch.float32)
 Xst = torch.tensor(Xst, dtype=torch.float32)
 
-# Some sanity checks
-print('\n#########')
-print(f'(Test Data) Xst.shape: {Xst.shape}')
-print(f'(Training Data) Xs_train.shape: {Xs_train.shape}')
-print(f'(Training Data) Xs_test.shape: {Xs_test.shape}\n')
-print(f'The dimensions of the training data add up: {Xs_train.shape[1] + Xs_test.shape[1] == train_features.shape[0]/12}')
-print('#########\n')
+# # Some sanity checks
+# print('\n#########')
+# print(f'(Test Data) Xst.shape: {Xst.shape}')
+# print(f'(Training Data) Xs_train.shape: {Xs_train.shape}')
+# print(f'(Training Data) Xs_test.shape: {Xs_test.shape}\n')
+# print(f'The dimensions of the training data add up: {Xs_train.shape[1] + Xs_test.shape[1] == train_features.shape[0]/12}')
+# print('#########\n')
 
-meanAcc = 0
+# meanAcc = 0
 # tot_prob = 0
+
+
+class LogReg(nn.Module):
+        def __init__(self, n_input_features):
+            super(LogReg,self).__init__()
+            self.layer1 = nn.Linear(n_input_features, 20)
+            self.layer2 = nn.Linear(20, 10)
+            self.layer3 = nn.Linear(10, 5)
+            self.layer4 = nn.Linear(5, 10)
+            self.layer5 = nn.Linear(10, 20)
+            self.layer6 = nn.Linear(20, 1)
+
+        def forward(self, x):
+            layer1_output = torch.relu(self.layer1(x))
+            layer2_output = torch.relu(self.layer2(layer1_output))
+            layer3_output = torch.relu(self.layer3(layer2_output))
+            layer4_output = torch.relu(self.layer4(layer3_output))
+            layer5_output = torch.relu(self.layer5(layer4_output))
+            layer6_output = torch.sigmoid(self.layer6(layer5_output))
+
+            self.probabilities = layer6_output
+            y_predicted = torch.sigmoid(self.probabilities)
+            return y_predicted
+
+#######################################################################################################################
+### Sub Task 1
 
 # Array to store the results for subtask 1
 res_t1 = np.zeros(shape=(Xst.shape[1], Xst.shape[0]))
@@ -221,16 +203,7 @@ for j in range(act_col):
     # Define Model
     input_size = n_features
     output_size = 1
-    class LogReg(nn.Module):
-        def __init__(self, n_input_features):
-            super(LogReg,self).__init__()
-            self.linear1 = nn.Linear(n_input_features, 100)
-            self.linear2 = nn.Linear(100, 1)
 
-        def forward(self, x):
-            y = torch.sigmoid(self.linear1(x))
-            y_predicted = torch.sigmoid(self.linear2(y))
-            return y_predicted
     model = LogReg(input_size)
 
     #Training
@@ -244,7 +217,7 @@ for j in range(act_col):
     # loss = MSE
     # def loss(y, y_predicted):
     #    return torch.dot(y-y_predicted,y-y_predicted)
-    criterion = nn.BCELoss()
+    loss_function = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     for epoch in range(n_iters):
@@ -253,7 +226,7 @@ for j in range(act_col):
         y_pred = model(Xs_train[j])
 
         # Compute loss
-        loss = criterion(y_pred.squeeze(), ys_train[0])
+        loss = loss_function(y_pred.squeeze(), ys_train[0])
 
         # Compute gradients
         loss.backward() #dloss/dx
@@ -272,19 +245,133 @@ for j in range(act_col):
             #print("Epoch: ", epoch+1)
             #print("Loss: ", loss)
 
+    # with torch.no_grad():
+    #     y_predicted = model(Xs_test[j])
+    #     # print(y_predicted.shape)
+    #     # tot_prob += y_predicted[0].item()
+    #     y_predicted = y_predicted.squeeze()
+    #     # res_t1[j] = model.probabilities # TODO: gather them up reasonably. model.probabilities requires the call "model(MY_DESIRED_INPUT_DATA)" first
+    #
+    #     y_predicted_cls = y_predicted.round()
+    #     acc = y_predicted_cls.eq(ys_test[j]).sum()/float(ys_test[j].shape[0])
+    #     print(f'Accuracy: {acc*100:.3f} %')
+    #     meanAcc = meanAcc + acc
+    #
+    #     # model(x_evaluation)
+    #     # y_probabities = model.probabilities
+
     with torch.no_grad():
-        y_predicted = model(Xs_test[j])
+        y_predicted = model(Xst[j])
         # print(y_predicted.shape)
         # tot_prob += y_predicted[0].item()
         y_predicted = y_predicted.squeeze()
-        y_predicted_cls = y_predicted.round()
-        acc = y_predicted_cls.eq(ys_test[j]).sum()/float(ys_test[j].shape[0])
-        # print(f'Accuracy: {acc*100:.3f} %')
-        meanAcc = meanAcc + acc
+        # print(model.probabilities.shape)
+        # print(res_t1.shape)
+        res_t1[:, j] = model.probabilities.squeeze()     # TODO: gather them up reasonably. model.probabilities requires the call "model(MY_DESIRED_INPUT_DATA)" first
 
-        # Applying the model to the test data and storing the probabilities in the result array
-        feat = model(Xst[j])
-        res_t1[j] = feat.cpu().detach().numpy()[0]
+        # model(x_evaluation)
+        # y_probabities = model.probabilities
 
-print(f'Average: {((meanAcc / act_col).item())*100:.3f} %')
-print(res_t1)
+
+# print(f'Average: {((meanAcc / act_col).item())*100:.3f} %')
+# print(res_t1)
+
+# export the results in the csv file
+np.savetxt('res_2_sub1.csv', res_t1, delimiter=',', fmt='%.3f')
+
+# #######################################################################################################################
+# # Sub Task 2
+#
+print('begin task 2')
+
+tempTab = colToMatrix(train_features, 7)
+heartTab = colToMatrix(train_features, 32)
+rrateTab = colToMatrix(train_features, 11)
+wbcTab = colToMatrix(train_features, 14)
+
+tempTest = colToMatrix(test_features, 7)
+heartTest = colToMatrix(test_features, 32)
+rrateTest = colToMatrix(test_features, 11)
+wbcTest = colToMatrix(test_features, 14)
+
+refSepsis = ground_truth[ :,11]
+
+X_train_t2 = np.array([tempTab, heartTab, rrateTab, wbcTab])
+X_test_t2 = np.array([tempTest, heartTest, rrateTest, wbcTest])
+y_t2 = np.array([refSepsis])
+
+# scaler = StandardScaler()
+# X_train_t2 = scaler.fit_transform(X_train_t2)
+# X_test_t2 = scaler.transform(X_test_t2)
+
+X_train_t2 = torch.tensor(X_train_t2, dtype=torch.float32)
+X_test_t2 = torch.tensor(X_test_t2, dtype=torch.float32)
+y_t2 = torch.tensor(y_t2, dtype=torch.float32)
+
+
+# Array to store the results for subtask 2
+res_t2 = np.zeros(shape=(X_test_t2.shape[1], 0))
+# print(res_t2.shape)
+
+# Get size
+print(f'X_train_t2.shape={X_train_t2.shape}')
+n_samples = X_train_t2.shape[1]
+n_features = X_train_t2.shape[0]
+
+# Initialize weights
+# w = torch.tensor(12*[0.0]  , dtype=torch.float32, requires_grad=True)
+
+# Define Model
+input_size = n_features
+output_size = 1
+
+model = LogReg(input_size)
+
+#Training
+n_iters = 100
+learning_rate = 0.01
+
+# loss = MSE
+loss_function = nn.BCELoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+for epoch in range(n_iters):
+    # Predict
+    # TODO: We need to figure out if we can load 4 features at the same time, maybe change the model for that?
+    y_pred = model(X_train_t2)
+
+    # Compute loss
+    loss = loss_function(y_pred.squeeze(), y_t2[0])
+
+    # Compute gradients
+    loss.backward() #dloss/dx
+
+    # Update weight
+    # This makes sure gradient isn't part of the computational graph
+    #with torch.no_grad():
+    #    w -= learning_rate*w.grad
+    optimizer.step()
+
+    # We need to reinitialize weight not to accumulate
+    #w.grad.zero_()
+    optimizer.zero_grad()
+
+
+with torch.no_grad():
+    y_predicted = model(X_test_t2)
+    # print(y_predicted.shape)
+    # tot_prob += y_predicted[0].item()
+    y_predicted = y_predicted.squeeze()
+    print(model.probabilities.shape)
+    print(res_t2.shape)
+    res_t2[:] = model.probabilities.squeeze()
+
+    # model(x_evaluation)
+    # y_probabities = model.probabilities
+
+# print(f'Average: {((meanAcc / act_col).item())*100:.3f} %')
+print(res_t2)
+
+# export the results in the csv file
+np.savetxt('res_2_sub2.csv', res_t2, delimiter=',', fmt='%.3f')
+
