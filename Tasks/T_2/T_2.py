@@ -279,15 +279,12 @@ for j in range(act_col):
         y_predicted = y_predicted.squeeze()
         y_predicted_cls = y_predicted.round()
         acc = y_predicted_cls.eq(ys_test[j]).sum()/float(ys_test[j].shape[0])
-        # print(f'p={model(Xst[0])}, accuracy: {acc*100:.3f} %')
-        # print(acc)
+        # print(f'Accuracy: {acc*100:.3f} %')
         meanAcc = meanAcc + acc
 
         # Applying the model to the test data and storing the probabilities in the result array
         feat = model(Xst[j])
         res_t1[j] = feat.cpu().detach().numpy()[0]
 
-# print("Average: ", meanAcc/act_col)
-# print(f'p={model(Xst[0]).shape}, Average accuracy: {(meanAcc/act_col)*100:.3f} %')
-
+print("Average: ", meanAcc/act_col)
 print(res_t1)
