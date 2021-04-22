@@ -286,5 +286,5 @@ for j in range(act_col):
         feat = model(Xst[j])
         res_t1[j] = feat.cpu().detach().numpy()[0]
 
-print("Average: ", meanAcc/act_col)
+print(f'Average: {((meanAcc / act_col).item())*100:.3f} %')
 print(res_t1)
