@@ -29,9 +29,9 @@ train_features = imputer.transform(train_features_frame)
 
 # How many entries are missing in the original dataframe?
 # for i in range(train_features.shape[1]):
-# 	n_miss = train_features_frame.iloc[:, i].isnull().sum()
-# 	percent = n_miss / train_features_frame.shape[0] * 100
-# 	print('> %d, Missing: %d (%.1f%%)'%(i, n_miss, percent))
+#   n_miss = train_features_frame.iloc[:, i].isnull().sum()
+#   percent = n_miss / train_features_frame.shape[0] * 100
+#   print('> %d, Missing: %d (%.1f%%)'%(i, n_miss, percent))
 
 
 marker = np.array(12*[-99])
@@ -197,17 +197,19 @@ ys_test = torch.tensor(ys_test, dtype=torch.float32)
 Xst = torch.tensor(Xst, dtype=torch.float32)
 
 # Some sanity checks
-print(f'\n(Test Data) Xst.shape: {Xst.shape}')
+print('\n#########')
+print(f'(Test Data) Xst.shape: {Xst.shape}')
 print(f'(Training Data) Xs_train.shape: {Xs_train.shape}')
-print(f'(Training Data) Xs_test.shape: {Xs_test.shape}')
-print(f'The dimensions of the training data add up: {Xs_train.shape[1] + Xs_test.shape[1] == train_features.shape[0]/12}\n')
+print(f'(Training Data) Xs_test.shape: {Xs_test.shape}\n')
+print(f'The dimensions of the training data add up: {Xs_train.shape[1] + Xs_test.shape[1] == train_features.shape[0]/12}')
+print('#########\n')
 
 meanAcc = 0
 # tot_prob = 0
 
 # Array to store the results for subtask 1
 res_t1 = np.zeros(shape=(Xst.shape[1], Xst.shape[0]))
-print(res_t1.shape)
+# print(res_t1.shape)
 
 for j in range(act_col):
     # Get size
@@ -281,9 +283,9 @@ for j in range(act_col):
         # print(acc)
         meanAcc = meanAcc + acc
 
+        # Applying the model to the test data and storing the probabilities in the result array
         feat = model(Xst[j])
         res_t1[j] = feat.cpu().detach().numpy()[0]
-        # print(numpy_array.shape)
 
 # print("Average: ", meanAcc/act_col)
 # print(f'p={model(Xst[0]).shape}, Average accuracy: {(meanAcc/act_col)*100:.3f} %')
