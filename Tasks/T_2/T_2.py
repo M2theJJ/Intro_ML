@@ -315,37 +315,46 @@ HeartrateTest = colToMatrixNoSup(test_features, 32)
 Xst_3 = np.array([RRateTest, ABPmTest, SP02Test, HeartrateTest])
 Xs_3 = np.array([RRateTab, ABPmTab, SPO2Tab, HeartrateTab])
 ys_3 = np.array([refRRate, refABPm, refSPO2, refHeartrate])
+Xs_train3 = 4*[[[]]]
+Xs_test3 = 4*[[]]
+ys_train3 = 4*[[]]
+ys_test3 = 4*[[]]
 
+# Takes one third of the input for validation
+for i in range(4):
+    Xs_train3[i], Xs_test3[i], ys_train3[i], ys_test3[i] = train_test_split(Xs_3[i], ys_3[i], test_size=0.20, random_state=69)
 
 Xs_train3 = torch.tensor(Xs_3, dtype=torch.float32)
 ys_train3 = torch.tensor(ys_3, dtype=torch.float32)
+Xs_test3 = torch.tensor(Xs_test3, dtype=torch.float32)
+ys_test3 = torch.tensor(ys_test3, dtype=torch.float32)
 Xst3 = torch.tensor(Xst_3, dtype=torch.float32)
 
+# Get size
+n_features = Xs_train3.shape[2]
+
+# Define Model
+input_size = n_features
+output_size = 1
+
+model = linearRegression(input_size)
+
+#Training
+n_iters = 100
+learning_rate = 0.01
+
+
+loss_function = nn.MSELoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
 for j in range(4):
-    # Get size
-    n_samples, n_features = Xs_train3[j].shape
-
-    # Define Model
-    input_size = n_features
-    output_size = 1
-
-    model = linearRegression(input_size)
-
-    #Training
-    n_iters = 100
-    learning_rate = 0.01
-
-
-    loss_function = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     for epoch in range(n_iters):
         # Predict
         y_pred = model(Xs_train3[j])
 
         # Compute loss
-        loss = loss_function(y_pred.squeeze(), ys_train3[0])
+        loss = loss_function(y_pred.squeeze(), ys_train3[j])
 
         # Compute gradients
         loss.backward() #dloss/dx
